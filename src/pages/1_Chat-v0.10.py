@@ -37,21 +37,13 @@ with st.expander("Debug Information", expanded=False):
             count = cursor.fetchone()[0]
             st.write(f"Total conversations in database: {count}")
             
-            # Show messages count
-            cursor.execute("SELECT COUNT(*) FROM messages")
-            msg_count = cursor.fetchone()[0]
-            st.write(f"Total messages in database: {msg_count}")
-            
             # List last 5 conversations
             cursor.execute("SELECT id, title FROM conversations ORDER BY created_at DESC LIMIT 5")
             recent = cursor.fetchall()
             if recent:
                 st.write("Recent conversations:")
                 for r in recent:
-                    # Count messages for this conversation
-                    cursor.execute("SELECT COUNT(*) FROM messages WHERE conversation_id = ?", (r['id'],))
-                    this_msg_count = cursor.fetchone()[0]
-                    st.write(f"- {r['title']} (ID: {r['id']}, Messages: {this_msg_count})")
+                    st.write(f"- {r['title']} (ID: {r['id']})")
             else:
                 st.write("No recent conversations found.")
         except Exception as e:
@@ -67,12 +59,8 @@ with st.expander("Debug Information", expanded=False):
                 existing = st.session_state.db.get_conversation(st.session_state.conversation_id)
                 if not existing:
                     title = st.session_state.get("conversation_title", "Forced Save")
-                    model = st.session_state.get("selected_model", "llama3.1")
-                    st.session_state.db.create_conversation(
-                        title=title,
-                        model=model
-                    )
-                    st.write(f"Created new conversation with ID: {st.session_state.conversation_id}")
+                    created = st.session_state.db.create_conversation(title=title)
+                    st.write(f"Created new conversation: {created}")
                 
                 # Add messages
                 if "messages" in st.session_state and st.session_state.messages:
@@ -82,7 +70,7 @@ with st.expander("Debug Information", expanded=False):
                             msg["role"], 
                             msg["content"]
                         )
-                        st.write(f"Added message: {msg_id} (role: {msg['role']}, length: {len(msg['content'])})")
+                        st.write(f"Added message: {msg_id}")
                     
                     st.success("Conversation manually saved!")
                 else:
@@ -109,9 +97,6 @@ with st.sidebar:
             index=0
         )
         st.warning("Using default models. Connect to Ollama to see installed models.")
-    
-    # Store selected model in session state for other functions
-    st.session_state.selected_model = selected_model
     
     # Ollama connection status
     if "ollama_connected" in st.session_state and st.session_state.ollama_connected:
@@ -156,57 +141,16 @@ with st.sidebar:
     
     # Clear conversation button
     if st.button("Clear Current Conversation"):
-        # Create a new conversation
-        st.session_state.conversation_id = str(uuid.uuid4())
-        st.session_state.conversation_title = "New Conversation"
+        # Keep the same conversation ID but clear messages
         st.session_state.messages = []
         st.rerun()
-
-# Function to save the current conversation to the database
-def save_conversation_to_db(conversation_id, title, model, messages):
-    """Save the current conversation to SQLite database."""
-    if "db" not in st.session_state or not st.session_state.db:
-        st.warning("Database not initialized. Conversation not saved.")
-        return False
-    
-    try:
-        # First, check if conversation exists
-        existing = st.session_state.db.get_conversation(conversation_id)
-        
-        # Create conversation if it doesn't exist
-        if not existing:
-            st.session_state.db.create_conversation(title=title, model=model)
-        
-        # Now add all messages that aren't already in the database
-        if existing and 'messages' in existing:
-            existing_message_contents = {msg['content'] for msg in existing['messages']}
-        else:
-            existing_message_contents = set()
-        
-        # Add only new messages
-        for msg in messages:
-            # Skip if this exact message content already exists in the conversation
-            if msg['content'] in existing_message_contents:
-                continue
-                
-            # Add the message
-            st.session_state.db.add_message(
-                conversation_id,
-                msg['role'],
-                msg['content']
-            )
-        
-        return True
-    except Exception as e:
-        st.error(f"Error saving conversation: {str(e)}")
-        return False
 
 # Initialize the agent (with error handling)
 def get_agent(model_name):
     """Get an Agno agent with error handling."""
     try:
         agent = Agent(model=Ollama(id=model_name), markdown=True)
-        # Quick test if the agent is working
+        # Test if the agent is working by making a simple request
         test_response = agent.run("test")
         if test_response is None:
             st.error(f"Could not initialize agent with model {model_name}. Check if Ollama is running and the model is installed.")
@@ -227,14 +171,6 @@ if "conversation_title" not in st.session_state:
 # Ensure messages list exists
 if "messages" not in st.session_state:
     st.session_state.messages = []
-elif len(st.session_state.messages) > 0:
-    # If we have messages already, make sure they're saved to the database
-    save_conversation_to_db(
-        st.session_state.conversation_id, 
-        st.session_state.conversation_title, 
-        st.session_state.get("selected_model", "llama3.1"),
-        st.session_state.messages
-    )
 
 # Display chat messages
 for message in st.session_state.messages:
@@ -362,15 +298,45 @@ if prompt:
                 st.error(error_message)
                 st.session_state.messages.append({"role": "assistant", "content": error_message})
     
-    # Save the conversation now that we have the user message and response
-    save_conversation_to_db(
-        st.session_state.conversation_id,
-        st.session_state.conversation_title,
-        selected_model,
-        st.session_state.messages
-    )
+    # Enhanced conversation saving - now directly save to SQLite first
+    try:
+        if "db" in st.session_state and st.session_state.db and st.session_state.messages:
+            # Check if the conversation exists
+            try:
+                existing = st.session_state.db.get_conversation(st.session_state.conversation_id)
+                if not existing:
+                    # Create new conversation
+                    st.session_state.db.create_conversation(
+                        title=st.session_state.conversation_title,
+                        model=selected_model
+                    )
+                
+                # Add latest messages
+                last_message = st.session_state.messages[-1]
+                user_message = st.session_state.messages[-2] if len(st.session_state.messages) >= 2 else None
+                
+                # Add user message if exists and we just added it
+                if user_message and user_message["role"] == "user":
+                    st.session_state.db.add_message(
+                        st.session_state.conversation_id,
+                        user_message["role"],
+                        user_message["content"]
+                    )
+                
+                # Add assistant message
+                if last_message["role"] == "assistant":
+                    st.session_state.db.add_message(
+                        st.session_state.conversation_id,
+                        last_message["role"],
+                        last_message["content"]
+                    )
+            except Exception as save_err:
+                st.error(f"Error saving to SQLite: {str(save_err)}")
+                st.code(traceback.format_exc())
+    except Exception as e:
+        st.error(f"Error during direct save: {str(e)}")
     
-    # Also try to save with RAG system
+    # Then try to save with RAG system
     if "rag_system" in st.session_state and st.session_state.messages:
         try:
             # Check if this is a new conversation

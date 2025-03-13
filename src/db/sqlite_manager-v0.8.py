@@ -3,46 +3,28 @@ import sqlite3
 import uuid
 from datetime import datetime
 import json
-import threading
 
 class SQLiteManager:
-    _instance = None
-    _lock = threading.Lock()
-    _local = threading.local()
-    
-    def __new__(cls, db_path="chat_history.db"):
-        """Implement a thread-safe singleton pattern"""
-        with cls._lock:
-            if cls._instance is None:
-                cls._instance = super(SQLiteManager, cls).__new__(cls)
-                cls._instance.db_path = db_path
-                cls._instance._connections = {}
-            return cls._instance
-    
     def __init__(self, db_path="chat_history.db"):
-        """Initialize database path (only happens once due to singleton)"""
+        """Initialize SQLite database connection and create tables if they don't exist."""
         self.db_path = db_path
+        self.conn = self._create_connection()
+        self._create_tables()
     
-    @property
-    def conn(self):
-        """Get a thread-specific connection to the database"""
-        thread_id = threading.get_ident()
-        
-        # Create a new connection for this thread if it doesn't exist
-        if thread_id not in self._connections:
-            connection = sqlite3.connect(self.db_path)
-            connection.row_factory = sqlite3.Row  # Return rows as dictionaries
-            self._connections[thread_id] = connection
-            
-            # Initialize tables for this connection
-            self._create_tables(connection)
-            
-        return self._connections[thread_id]
+    def _create_connection(self):
+        """Create a database connection to the SQLite database."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row  # Return rows as dictionaries
+            return conn
+        except sqlite3.Error as e:
+            print(f"SQLite connection error: {e}")
+            return None
     
-    def _create_tables(self, connection):
+    def _create_tables(self):
         """Create necessary tables if they don't exist."""
         try:
-            cursor = connection.cursor()
+            cursor = self.conn.cursor()
             
             # Create conversations table
             cursor.execute('''
@@ -67,7 +49,7 @@ class SQLiteManager:
             )
             ''')
             
-            connection.commit()
+            self.conn.commit()
         except sqlite3.Error as e:
             print(f"Table creation error: {e}")
     
@@ -119,12 +101,7 @@ class SQLiteManager:
             
             # Get conversation details
             cursor.execute("SELECT * FROM conversations WHERE id = ?", (conversation_id,))
-            row = cursor.fetchone()
-            
-            if not row:
-                return None
-                
-            conversation = dict(row)
+            conversation = dict(cursor.fetchone())
             
             # Get all messages for this conversation
             cursor.execute("SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp", (conversation_id,))
@@ -196,13 +173,7 @@ class SQLiteManager:
             print(f"Error deleting conversation: {e}")
             return False
     
-    def close_all(self):
-        """Close all database connections."""
-        for conn in self._connections.values():
-            if conn:
-                conn.close()
-        self._connections.clear()
-    
-    def __del__(self):
-        """Ensure connections are closed when the object is garbage collected."""
-        self.close_all()
+    def close(self):
+        """Close the database connection."""
+        if self.conn:
+            self.conn.close()

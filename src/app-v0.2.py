@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # App title in the main page
-st.header("Agno LLM Chat Assistant")
+st.title("Agno LLM Chat Assistant")
 st.markdown("Welcome to the Agno Chat Assistant with RAG capabilities.")
 
 # Initialize session state for app-wide variables
@@ -28,53 +28,26 @@ if "initialized" not in st.session_state:
     st.session_state.ollama_connected = False
 
 # Initialize database connections and API clients
-# Wrap each initialization in its own try block to isolate errors
 if "db" not in st.session_state:
-    try:
-        st.session_state.db = SQLiteManager()
-    except Exception as e:
-        st.error(f"Failed to initialize SQLite database: {str(e)}")
-        st.session_state.db = None
-
-if "vector_store" not in st.session_state:
-    try:
-        st.session_state.vector_store = VectorStore()
-    except Exception as e:
-        st.error(f"Failed to initialize Vector Store: {str(e)}")
-        st.session_state.vector_store = None
-
-if "rag_system" not in st.session_state:
-    try:
-        st.session_state.rag_system = RAGSystem()
-    except Exception as e:
-        st.error(f"Failed to initialize RAG system: {str(e)}")
-        st.session_state.rag_system = None
-
-if "ollama_api" not in st.session_state:
-    try:
-        st.session_state.ollama_api = OllamaAPI()
-    except Exception as e:
-        st.error(f"Failed to initialize Ollama API: {str(e)}")
-        st.session_state.ollama_api = None
+    st.session_state.db = SQLiteManager()
+    st.session_state.vector_store = VectorStore()
+    st.session_state.rag_system = RAGSystem()
+    # Initialize the Ollama API - this was missing/incorrect
+    st.session_state.ollama_api = OllamaAPI()
 
 # Check Ollama connection and populate models
 try:
-    if st.session_state.ollama_api:
-        with st.spinner("Connecting to Ollama API..."):
-            connected = st.session_state.ollama_api.check_connection()
-            st.session_state.ollama_connected = connected
-            
-            if connected:
-                st.session_state.ollama_models = st.session_state.ollama_api.get_model_names()
-                if not st.session_state.ollama_models:
-                    st.warning("Connected to Ollama, but no models found. Please install models via Ollama.")
-                    st.session_state.ollama_models = ["llama3.1", "mistral", "mixtral"]  # Default fallback
-            else:
-                st.error("Could not connect to Ollama API. Please ensure Ollama is running on http://localhost:11434")
-                st.session_state.ollama_models = ["llama3.1", "mistral", "mixtral"]  # Default fallback
-    else:
-        st.warning("Ollama API not initialized. Using default models.")
-        st.session_state.ollama_models = ["llama3.1", "mistral", "mixtral"]
+    with st.spinner("Connecting to Ollama API..."):
+        connected = st.session_state.ollama_api.check_connection()
+        st.session_state.ollama_connected = connected
+        
+        if connected:
+            st.session_state.ollama_models = st.session_state.ollama_api.get_model_names()
+            if not st.session_state.ollama_models:
+                st.warning("Connected to Ollama, but no models found. Please install models via Ollama.")
+        else:
+            st.error("Could not connect to Ollama API. Please ensure Ollama is running on http://localhost:11434")
+            st.session_state.ollama_models = ["llama3.1", "mistral", "mixtral"]  # Default fallback
 except Exception as e:
     st.error(f"Error connecting to Ollama: {str(e)}")
     st.session_state.ollama_connected = False

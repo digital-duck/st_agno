@@ -6,10 +6,6 @@ import streamlit as st
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.vectorstores import Chroma
 
-# Create a global flag to track if we've shown ChromaDB warnings already
-if "chroma_warnings_shown" not in st.session_state:
-    st.session_state.chroma_warnings_shown = False
-
 class VectorStore:
     def __init__(self, persist_directory="./chroma_db", collection_name="chat_history"):
         """Initialize ChromaDB vector store for semantic search capabilities."""
@@ -39,11 +35,7 @@ class VectorStore:
             self._initialize_collection()
                     
         except Exception as e:
-            # Only show error once
-            if not st.session_state.chroma_warnings_shown:
-                st.error(f"Error initializing VectorStore: {str(e)}")
-                st.session_state.chroma_warnings_shown = True
-                
+            st.error(f"Error initializing VectorStore: {str(e)}")
             # Initialize with dummy objects to prevent further errors
             self.client = None
             self.collection = None
@@ -77,9 +69,7 @@ class VectorStore:
         except Exception as e:
             # Check for dimension mismatch error
             if "Embedding dimension" in str(e) and "does not match" in str(e):
-                # Only show this message once
-                if not st.session_state.chroma_warnings_shown:
-                    st.warning(f"Embedding dimension mismatch. Recreating collection.")
+                st.warning(f"Embedding dimension mismatch. Recreating collection.")
                 self._recreate_collection()
             else:
                 raise e
@@ -104,11 +94,7 @@ class VectorStore:
                 embedding_function=self.embedding_function
             )
             
-            # Only show success message once
-            if not st.session_state.chroma_warnings_shown:
-                st.success("Vector database has been reset due to model changes. Previous embeddings have been cleared.")
-                st.session_state.chroma_warnings_shown = True
-                
+            st.success("Vector database has been reset due to model changes. Previous embeddings have been cleared.")
             self.was_reset = True  # Mark as reset
             
         except Exception as e:
@@ -134,18 +120,10 @@ class VectorStore:
                     embedding_function=self.embedding_function
                 )
                 
-                # Only show success message once
-                if not st.session_state.chroma_warnings_shown:
-                    st.success("Vector database has been completely reset.")
-                    st.session_state.chroma_warnings_shown = True
-                    
+                st.success("Vector database has been completely reset.")
                 self.was_reset = True  # Mark as reset
             except Exception as reset_err:
-                # Only show error once
-                if not st.session_state.chroma_warnings_shown:
-                    st.error(f"Failed to reset vector database: {str(reset_err)}")
-                    st.session_state.chroma_warnings_shown = True
-                    
+                st.error(f"Failed to reset vector database: {str(reset_err)}")
                 self.collection = None
                 self.langchain_chroma = None
     
@@ -180,11 +158,6 @@ class VectorStore:
                         return True
                 except Exception as retry_err:
                     self.was_reset = True  # Mark as reset even if it failed
-            else:
-                # Only show non-dimension errors once
-                if not st.session_state.chroma_warnings_shown:
-                    st.warning(f"Error adding message to vector store: {e}")
-                    st.session_state.chroma_warnings_shown = True
             
             return False
     
@@ -217,19 +190,10 @@ class VectorStore:
                 try:
                     self._recreate_collection()
                     # No need to retry search since the collection is now empty
-                    # Only show info message once
-                    if not st.session_state.chroma_warnings_shown:
-                        st.info("Vector database was reset due to model changes. Please add new data first.")
-                        st.session_state.chroma_warnings_shown = True
-                        
+                    st.info("Vector database was reset due to model changes. Please add new data first.")
                     self.was_reset = True  # Mark as reset
                 except Exception as retry_err:
                     self.was_reset = True  # Mark as reset even if it failed
-            else:
-                # Only show non-dimension errors once
-                if not st.session_state.chroma_warnings_shown:
-                    st.warning(f"Error performing semantic search: {e}")
-                    st.session_state.chroma_warnings_shown = True
             
             return []
     
@@ -243,10 +207,6 @@ class VectorStore:
             self.collection.delete(ids=[message_id])
             return True
         except Exception as e:
-            # Only show errors once
-            if not st.session_state.chroma_warnings_shown:
-                st.warning(f"Error deleting message from vector store: {e}")
-                st.session_state.chroma_warnings_shown = True
             return False
     
     def delete_conversation_messages(self, conversation_id):
@@ -267,8 +227,4 @@ class VectorStore:
             
             return True
         except Exception as e:
-            # Only show errors once
-            if not st.session_state.chroma_warnings_shown:
-                st.warning(f"Error deleting conversation messages from vector store: {e}")
-                st.session_state.chroma_warnings_shown = True
             return False

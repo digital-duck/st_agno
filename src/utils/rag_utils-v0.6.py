@@ -1,13 +1,8 @@
 import uuid
-import time
 from typing import List, Dict, Any
 import streamlit as st
 from db.sqlite_manager import SQLiteManager
 from db.vector_store import VectorStore
-
-# Create a global flag to track if we've shown ChromaDB warnings already
-if "chroma_warnings_shown" not in st.session_state:
-    st.session_state.chroma_warnings_shown = False
 
 class RAGSystem:
     def __init__(self):
@@ -16,16 +11,6 @@ class RAGSystem:
         self.vector_store = VectorStore()
         # Flag to track if ChromaDB was reset
         self.chroma_reset = False
-        
-        # Check if vector store was reset during initialization
-        if hasattr(self.vector_store, 'was_reset') and self.vector_store.was_reset:
-            self.chroma_reset = True
-            
-            # Show the reset message only once per session
-            if not st.session_state.chroma_warnings_shown:
-                st.success("Vector database has been reset due to model changes. Previous embeddings have been cleared.")
-                st.info("Vector database was reset due to model changes. Please add new data first.")
-                st.session_state.chroma_warnings_shown = True
     
     def search(self, query: str, use_semantic: bool = True, use_text: bool = True, limit: int = 5) -> List[Dict[str, Any]]:
         """
@@ -63,10 +48,7 @@ class RAGSystem:
                                     "timestamp": msg["timestamp"]
                                 })
             except Exception as e:
-                # Only show warning if not already shown
-                if not st.session_state.chroma_warnings_shown:
-                    st.warning(f"Text search error: {e}. Using semantic search only.")
-                    st.session_state.chroma_warnings_shown = True
+                st.warning(f"Text search error: {e}. Using semantic search only.")
         
         # Semantic search using ChromaDB
         if use_semantic and not self.chroma_reset:
@@ -76,9 +58,6 @@ class RAGSystem:
                 # Check if the vector store was reset during the search
                 if hasattr(self.vector_store, 'was_reset') and self.vector_store.was_reset:
                     self.chroma_reset = True
-                    # Only show reset message once
-                    if not st.session_state.chroma_warnings_shown:
-                        st.session_state.chroma_warnings_shown = True
                 else:
                     for result in semantic_results:
                         # Add semantic search results
@@ -91,9 +70,8 @@ class RAGSystem:
                             "score": result.get("score", 0)
                         })
             except Exception as e:
-                # Skip showing warnings entirely after first occurrence
-                if not st.session_state.chroma_warnings_shown:
-                    st.session_state.chroma_warnings_shown = True
+                if "Embedding dimension" not in str(e):  # Only show warning if not a dimension error
+                    st.warning(f"Semantic search error: {e}. Using text search only.")
                 self.chroma_reset = True  # Mark as reset to avoid repeated warnings
         
         # Deduplicate and sort results
@@ -150,18 +128,11 @@ class RAGSystem:
                             # Update chroma_reset flag if vector store was reset
                             if hasattr(self.vector_store, 'was_reset') and self.vector_store.was_reset:
                                 self.chroma_reset = True
-                                # Show reset message only once
-                                if not st.session_state.chroma_warnings_shown:
-                                    st.session_state.chroma_warnings_shown = True
                         except Exception as e:
-                            # Skip showing warnings after first occurrence
-                            if not st.session_state.chroma_warnings_shown:
-                                st.session_state.chroma_warnings_shown = True
-                            self.chroma_reset = True
+                            if "Embedding dimension" not in str(e):  # Only show warning if not a dimension error
+                                st.warning(f"Could not add message to vector store: {e}")
         except Exception as e:
-            if not st.session_state.chroma_warnings_shown:
-                st.error(f"Error saving conversation: {e}")
-                st.session_state.chroma_warnings_shown = True
+            st.error(f"Error saving conversation: {e}")
             return False
             
         return True
@@ -188,20 +159,13 @@ class RAGSystem:
                     # Update chroma_reset flag if vector store was reset
                     if hasattr(self.vector_store, 'was_reset') and self.vector_store.was_reset:
                         self.chroma_reset = True
-                        # Show reset message only once
-                        if not st.session_state.chroma_warnings_shown:
-                            st.session_state.chroma_warnings_shown = True
                 except Exception as e:
-                    # Skip showing warnings after first occurrence
-                    if not st.session_state.chroma_warnings_shown:
-                        st.session_state.chroma_warnings_shown = True
-                    self.chroma_reset = True
+                    if "Embedding dimension" not in str(e):  # Only show warning if not a dimension error
+                        st.warning(f"Could not add message to vector store: {e}")
             
             return message_id
         except Exception as e:
-            if not st.session_state.chroma_warnings_shown:
-                st.error(f"Error saving message: {e}")
-                st.session_state.chroma_warnings_shown = True
+            st.error(f"Error saving message: {e}")
             return None
     
     def delete_conversation(self, conversation_id):
@@ -214,7 +178,5 @@ class RAGSystem:
             # Then delete from SQLite
             return self.db.delete_conversation(conversation_id)
         except Exception as e:
-            if not st.session_state.chroma_warnings_shown:
-                st.error(f"Error deleting conversation: {e}")
-                st.session_state.chroma_warnings_shown = True
+            st.error(f"Error deleting conversation: {e}")
             return False

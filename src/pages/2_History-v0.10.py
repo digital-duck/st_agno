@@ -50,22 +50,10 @@ with st.sidebar:
             count = cursor.fetchone()[0]
             st.info(f"Total conversations in database: {count}")
             
-            # Count messages
-            cursor.execute("SELECT COUNT(*) FROM messages")
-            msg_count = cursor.fetchone()[0]
-            st.info(f"Total messages in database: {msg_count}")
-            
             # Check if tables exist
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = cursor.fetchall()
             st.info(f"Tables in database: {[t[0] for t in tables]}")
-            
-            # Show schema for messages table
-            cursor.execute("PRAGMA table_info(messages)")
-            schema = cursor.fetchall()
-            st.write("Messages table schema:")
-            for col in schema:
-                st.write(f"- {col['name']}: {col['type']}")
         except Exception as e:
             st.error(f"Database error: {str(e)}")
             st.code(traceback.format_exc())
@@ -76,7 +64,7 @@ with st.sidebar:
         st.session_state.search_query = search_query
         st.session_state.date_range = date_range
 
-# Function to load conversations from SQLite with better message counting
+# Function to load conversations from SQLite with detailed error handling
 def load_conversations(query=None, date_range=None):
     if "db" not in st.session_state or not st.session_state.db:
         st.error("Database connection not initialized")
@@ -87,31 +75,6 @@ def load_conversations(query=None, date_range=None):
             conversations = st.session_state.db.search_conversations(query)
         else:
             conversations = st.session_state.db.get_all_conversations(limit=100)
-        
-        # Add accurate message count to each conversation
-        for conv in conversations:
-            try:
-                # Get actual message count from database
-                cursor = st.session_state.db.conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM messages WHERE conversation_id = ?", (conv["id"],))
-                msg_count_row = cursor.fetchone()
-                actual_msg_count = msg_count_row[0] if msg_count_row else 0
-                
-                # Update message count in conversation
-                conv["message_count"] = actual_msg_count
-                
-                # If no first message but there are messages, fetch the first one
-                if ("first_message" not in conv or not conv["first_message"]) and actual_msg_count > 0:
-                    cursor.execute(
-                        "SELECT content FROM messages WHERE conversation_id = ? AND role = 'user' ORDER BY timestamp LIMIT 1", 
-                        (conv["id"],)
-                    )
-                    first_msg_row = cursor.fetchone()
-                    if first_msg_row:
-                        conv["first_message"] = first_msg_row[0]
-            except Exception as e:
-                st.warning(f"Error retrieving message count: {str(e)}")
-                conv["message_count"] = 0
         
         # Apply date filter if provided
         if date_range and len(date_range) == 2:
@@ -151,34 +114,13 @@ def display_conversation(conversation_id):
         st.subheader(f"Conversation: {conversation['title']}")
         st.caption(f"Created: {conversation['created_at']} | Model: {conversation['model']}")
         
-        # Count messages directly from database for verification
-        cursor = st.session_state.db.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM messages WHERE conversation_id = ?", (conversation_id,))
-        db_msg_count = cursor.fetchone()[0]
-        
         # Display conversation messages
         if "messages" in conversation and conversation["messages"]:
-            st.caption(f"Messages: {len(conversation['messages'])} (database shows {db_msg_count})")
             for message in conversation["messages"]:
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
         else:
-            # If no messages in conversation object but db says there are messages
-            if db_msg_count > 0:
-                st.warning(f"Database indicates {db_msg_count} messages exist, but they couldn't be loaded. This may be a data inconsistency.")
-                
-                # Try to fetch messages directly
-                cursor.execute("SELECT id, role, content, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp", (conversation_id,))
-                direct_messages = cursor.fetchall()
-                
-                if direct_messages:
-                    st.info(f"Retrieved {len(direct_messages)} messages directly from database:")
-                    for msg in direct_messages:
-                        with st.chat_message(msg["role"]):
-                            st.markdown(msg["content"])
-                            st.caption(f"Message ID: {msg['id'][:8]}... | Time: {msg['timestamp']}")
-            else:
-                st.info("No messages found in this conversation.")
+            st.info("No messages found in this conversation.")
         
         # Action buttons
         col1, col2 = st.columns(2)
@@ -190,23 +132,10 @@ def display_conversation(conversation_id):
                 st.session_state.conversation_title = conversation["title"]
                 
                 # Convert messages to the format expected in the chat page
-                if "messages" in conversation and conversation["messages"]:
-                    st.session_state.messages = [
-                        {"role": msg["role"], "content": msg["content"]}
-                        for msg in conversation["messages"]
-                    ]
-                else:
-                    # Try to fetch messages directly as fallback
-                    st.session_state.messages = []
-                    try:
-                        cursor.execute("SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY timestamp", (conversation_id,))
-                        for msg in cursor.fetchall():
-                            st.session_state.messages.append({
-                                "role": msg["role"],
-                                "content": msg["content"]
-                            })
-                    except Exception as e:
-                        st.error(f"Error loading messages: {str(e)}")
+                st.session_state.messages = [
+                    {"role": msg["role"], "content": msg["content"]}
+                    for msg in conversation.get("messages", [])
+                ]
                 
                 # Redirect to the chat page
                 st.switch_page("pages/1_Chat.py")
@@ -294,7 +223,7 @@ else:
                 "Updated": updated_date,
                 "Model": conv["model"],
                 "Messages": conv.get("message_count", 0),
-                "Preview": preview or "None"
+                "Preview": preview
             })
         
         df = pd.DataFrame(df_data)

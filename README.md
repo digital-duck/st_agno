@@ -98,6 +98,10 @@ src/
 - If no models appear in the dropdown, install at least one model: `ollama pull llama3.1`
 - For ChromaDB issues, try deleting the `chroma_db` directory and restarting
 
+## Acknowledgement
+this app is developed in collaboration with `Claude 3.7 Sonnet` (https://claude.ai/chat/9f3c3b91-1fe1-4228-affe-0b4d54d16265)
+
+
 ## License
 
 Apache License 2.0
