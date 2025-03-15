@@ -6,6 +6,10 @@ import traceback
 from agno.agent import Agent
 from agno.models.ollama import Ollama
 
+from utils.config import (
+    DEFAULT_MODEL_LIST, DEFAULT_MODEL
+)
+
 # Init page config
 st.set_page_config(
     page_title="Agno Chat",
@@ -67,7 +71,7 @@ with st.expander("Debug Information", expanded=False):
                 existing = st.session_state.db.get_conversation(st.session_state.conversation_id)
                 if not existing:
                     title = st.session_state.get("conversation_title", "Forced Save")
-                    model = st.session_state.get("selected_model", "llama3.1")
+                    model = st.session_state.get("selected_model", DEFAULT_MODEL)
                     st.session_state.db.create_conversation(
                         title=title,
                         model=model
@@ -97,16 +101,18 @@ with st.sidebar:
     
     # Model selection from Ollama API
     if "ollama_models" in st.session_state and st.session_state.ollama_models:
+        ollama_model_list = st.session_state.ollama_models
+        # st.info(ollama_model_list)  # DEBUG
         selected_model = st.selectbox(
             "Select Model",
-            st.session_state.ollama_models,
-            index=0
+            ollama_model_list,
+            index=ollama_model_list.index(DEFAULT_MODEL)
         )
     else:
         selected_model = st.selectbox(
             "Select Model",
-            ["llama3.1", "mistral", "mixtral"],
-            index=0
+            DEFAULT_MODEL_LIST,
+            index=DEFAULT_MODEL_LIST.index(DEFAULT_MODEL)
         )
         st.warning("Using default models. Connect to Ollama to see installed models.")
     
@@ -232,7 +238,7 @@ elif len(st.session_state.messages) > 0:
     save_conversation_to_db(
         st.session_state.conversation_id, 
         st.session_state.conversation_title, 
-        st.session_state.get("selected_model", "llama3.1"),
+        st.session_state.get("selected_model", DEFAULT_MODEL),
         st.session_state.messages
     )
 

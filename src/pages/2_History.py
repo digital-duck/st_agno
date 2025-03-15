@@ -103,7 +103,7 @@ def load_conversations(query=None, date_range=None):
                 # If no first message but there are messages, fetch the first one
                 if ("first_message" not in conv or not conv["first_message"]) and actual_msg_count > 0:
                     cursor.execute(
-                        "SELECT content FROM messages WHERE conversation_id = ? AND role = 'user' ORDER BY timestamp LIMIT 1", 
+                        "SELECT content FROM messages WHERE conversation_id = ? AND role = 'user' ORDER BY created_at LIMIT 1", 
                         (conv["id"],)
                     )
                     first_msg_row = cursor.fetchone()
@@ -168,7 +168,7 @@ def display_conversation(conversation_id):
                 st.warning(f"Database indicates {db_msg_count} messages exist, but they couldn't be loaded. This may be a data inconsistency.")
                 
                 # Try to fetch messages directly
-                cursor.execute("SELECT id, role, content, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp", (conversation_id,))
+                cursor.execute("SELECT id, role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at", (conversation_id,))
                 direct_messages = cursor.fetchall()
                 
                 if direct_messages:
@@ -176,7 +176,7 @@ def display_conversation(conversation_id):
                     for msg in direct_messages:
                         with st.chat_message(msg["role"]):
                             st.markdown(msg["content"])
-                            st.caption(f"Message ID: {msg['id'][:8]}... | Time: {msg['timestamp']}")
+                            st.caption(f"Message ID: {msg['id'][:8]}... | Time: {msg['created_at']}")
             else:
                 st.info("No messages found in this conversation.")
         
@@ -199,7 +199,7 @@ def display_conversation(conversation_id):
                     # Try to fetch messages directly as fallback
                     st.session_state.messages = []
                     try:
-                        cursor.execute("SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY timestamp", (conversation_id,))
+                        cursor.execute("SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at", (conversation_id,))
                         for msg in cursor.fetchall():
                             st.session_state.messages.append({
                                 "role": msg["role"],

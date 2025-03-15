@@ -18,7 +18,8 @@ class OllamaAPI:
             )
             
             if response.status_code == 200:
-                return response.json().get("models", [])
+                models = response.json().get("models", [])
+                return models
             else:
                 print(f"Error getting models: {response.status_code} - {response.text}")
                 return []
@@ -59,7 +60,8 @@ class OllamaAPI:
     def get_model_names(self) -> List[str]:
         """Get a list of available model names."""
         models = self.list_models()
-        return [model.get("name") for model in models if "name" in model]
+        model_names = [model.get("name").replace(":latest", "") for model in models if "name" in model]
+        return sorted(model_names)
     
     def check_connection(self) -> bool:
         """Check if the Ollama API is accessible."""

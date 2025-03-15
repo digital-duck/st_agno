@@ -62,7 +62,7 @@ class SQLiteManager:
                 conversation_id TEXT,
                 role TEXT,
                 content TEXT,
-                timestamp TEXT,
+                created_at TEXT,
                 FOREIGN KEY (conversation_id) REFERENCES conversations (id)
             )
             ''')
@@ -75,12 +75,17 @@ class SQLiteManager:
         """Create a new conversation and return its ID."""
         try:
             conversation_id = str(uuid.uuid4())
-            now = datetime.now().isoformat()
+            ts_now = datetime.now().isoformat()
             
             cursor = self.conn.cursor()
+            sql_stmt = """
+INSERT INTO conversations 
+(id, title, created_at, model, updated_at) 
+VALUES (?, ?, ?, ?, ?)
+"""
             cursor.execute(
-                "INSERT INTO conversations (id, title, created_at, model, updated_at) VALUES (?, ?, ?, ?, ?)",
-                (conversation_id, title, now, model, now)
+                sql_stmt,
+                (conversation_id, title, ts_now, model, ts_now)
             )
             self.conn.commit()
             return conversation_id
@@ -92,18 +97,16 @@ class SQLiteManager:
         """Add a message to a conversation."""
         try:
             message_id = str(uuid.uuid4())
-            now = datetime.now().isoformat()
+            ts_now = datetime.now().isoformat()
             
             cursor = self.conn.cursor()
-            cursor.execute(
-                "INSERT INTO messages (id, conversation_id, role, content, timestamp) VALUES (?, ?, ?, ?, ?)",
-                (message_id, conversation_id, role, content, now)
-            )
-            
-            # Update conversation's updated_at timestamp
-            cursor.execute(
-                "UPDATE conversations SET updated_at = ? WHERE id = ?",
-                (now, conversation_id)
+            sql_stmt = """
+INSERT INTO messages 
+(id, conversation_id, role, content, created_at) 
+VALUES (?, ?, ?, ?, ?)
+"""
+            cursor.execute(sql_stmt,
+                (message_id, conversation_id, role, content, ts_now)
             )
             
             self.conn.commit()
@@ -127,7 +130,7 @@ class SQLiteManager:
             conversation = dict(row)
             
             # Get all messages for this conversation
-            cursor.execute("SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp", (conversation_id,))
+            cursor.execute("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at", (conversation_id,))
             messages = [dict(row) for row in cursor.fetchall()]
             
             conversation['messages'] = messages
@@ -143,7 +146,7 @@ class SQLiteManager:
             
             cursor.execute("""
                 SELECT c.*, COUNT(m.id) as message_count, 
-                (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY timestamp LIMIT 1) as first_message
+                (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at LIMIT 1) as first_message
                 FROM conversations c
                 LEFT JOIN messages m ON c.id = m.conversation_id
                 GROUP BY c.id

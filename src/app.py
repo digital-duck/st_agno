@@ -1,10 +1,17 @@
 import streamlit as st
 import uuid
 import os
+from pathlib import Path
 from db.sqlite_manager import SQLiteManager
 from db.vector_store import VectorStore
 from utils.rag_utils import RAGSystem
 from utils.ollama_utils import OllamaAPI
+from utils.config import (
+    DEFAULT_MODEL_LIST, DEFAULT_MODEL
+)
+
+
+
 
 # Initialize page configuration
 st.set_page_config(
@@ -68,17 +75,17 @@ try:
                 st.session_state.ollama_models = st.session_state.ollama_api.get_model_names()
                 if not st.session_state.ollama_models:
                     st.warning("Connected to Ollama, but no models found. Please install models via Ollama.")
-                    st.session_state.ollama_models = ["llama3.1", "mistral", "mixtral"]  # Default fallback
+                    st.session_state.ollama_models = DEFAULT_MODEL_LIST  # Default fallback
             else:
                 st.error("Could not connect to Ollama API. Please ensure Ollama is running on http://localhost:11434")
-                st.session_state.ollama_models = ["llama3.1", "mistral", "mixtral"]  # Default fallback
+                st.session_state.ollama_models = DEFAULT_MODEL_LIST  # Default fallback
     else:
         st.warning("Ollama API not initialized. Using default models.")
-        st.session_state.ollama_models = ["llama3.1", "mistral", "mixtral"]
+        st.session_state.ollama_models = DEFAULT_MODEL_LIST
 except Exception as e:
     st.error(f"Error connecting to Ollama: {str(e)}")
     st.session_state.ollama_connected = False
-    st.session_state.ollama_models = ["llama3.1", "mistral", "mixtral"]  # Default fallback
+    st.session_state.ollama_models = DEFAULT_MODEL_LIST  # Default fallback
 
 # Display main page guidance
 st.markdown("""
@@ -100,15 +107,23 @@ if st.button("Start New Conversation"):
     st.session_state.messages = []
     st.rerun()
 
-# Create .streamlit directory and config file
-os.makedirs(".streamlit", exist_ok=True)
 
-with open(".streamlit/config.toml", "w") as f:
-    f.write("""
-[theme]
-primaryColor="#FF4B4B"
-backgroundColor="#FFFFFF"
-secondaryBackgroundColor="#F0F2F6"
-textColor="#262730"
-font="sans serif"
-    """)
+def init_config(cfg_path=".streamlit/config.toml"):
+    """Create .streamlit directory and config file if not found"""
+
+    # Convert string path to Path object
+    config_path = Path(cfg_path)
+    
+    # Create parent directory with exists_ok=True
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Only create the config file if it doesn't exist
+    if not config_path.exists():
+        config_path.write_text("""
+    [theme]
+    primaryColor="#FF4B4B"
+    backgroundColor="#FFFFFF"
+    secondaryBackgroundColor="#F0F2F6"
+    textColor="#262730"
+    font="sans serif"
+        """)
